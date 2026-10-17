@@ -358,7 +358,7 @@ jobs:
         fi
         echo "OK: exec-hook compat applied"
 
-    - name: Fix SukiSU-Ultra builtin throne_tracker (#992: pkg out of scope)
+    - name: "Fix SukiSU-Ultra builtin throne_tracker (#992 - pkg out of scope)"
       if: inputs.root_flavor == 'sukisu-ultra'
       shell: bash
       run: |
