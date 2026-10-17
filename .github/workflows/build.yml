@@ -358,28 +358,76 @@ jobs:
         fi
         echo "OK: exec-hook compat applied"
 
-    - name: "Fix SukiSU-Ultra builtin throne_tracker (#992 - pkg out of scope)"
+    - name: "Fix SukiSU-Ultra builtin build (#992 - throne_tracker pkg, KSU_IOCTL_MANAGER, track_throne flag)"
       if: inputs.root_flavor == 'sukisu-ultra'
       shell: bash
       run: |
         set -euo pipefail
-        F="$GITHUB_WORKSPACE/kernel/SukiSU-Ultra/kernel/manager/throne_tracker.c"
-        if [ ! -f "$F" ]; then echo "throne_tracker.c not found ($F); skipping"; exit 0; fi
-        python3 - "$F" <<'PY'
-        import sys
-        p = sys.argv[1]
-        s = open(p).read()
-        old = "strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME)"
-        i = s.find(old)
-        j = s.find(old, i + 1)
-        if j < 0:
-            print("throne_tracker: pattern already fixed or single occurrence; nothing to do")
-        else:
-            s = s[:j] + s[j:].replace(old, "strncmp(np->package, KSU_PACKAGE_NAME, KSU_MAX_PACKAGE_NAME)", 1)
-            open(p, "w").write(s)
-            print("throne_tracker: patched out-of-scope pkg -> KSU_PACKAGE_NAME")
+        K="$GITHUB_WORKSPACE/kernel/SukiSU-Ultra/kernel"
+        [ -d "$K" ] || { echo "SukiSU-Ultra tree not found ($K); skipping"; exit 0; }
+        python3 - "$K" <<'PY'
+        import os, sys
+        K = sys.argv[1]
+
+        def patch(name, fn):
+            p = os.path.join(K, name)
+            if not os.path.isfile(p):
+                print(f"{name}: missing; skipped")
+                return
+            s = open(p).read()
+            n = fn(s)
+            if n is None or n == s:
+                print(f"{name}: nothing to do")
+                return
+            open(p, "w").write(n)
+            print(f"{name}: patched")
+
+        # 1) #992: `pkg` declared inside `if (sig_fallback)` but used in the
+        #    multi-manager (#987) loop -> use KSU_PACKAGE_NAME, like main does.
+        def f_throne(s):
+            old = "strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME)"
+            i = s.find(old)
+            j = s.find(old, i + 1) if i >= 0 else -1
+            if j < 0:
+                return None
+            return s[:j] + s[j:].replace(
+                old, "strncmp(np->package, KSU_PACKAGE_NAME, KSU_MAX_PACKAGE_NAME)", 1)
+
+        # 2) #992: 0af2cf9c deleted the copy-paste line instead of renaming it.
+        #    a2339013 emitted `_IOWR('K', 106, ksu_manager_cmd)` labelled
+        #    KSU_IOCTL_KPM (dup). dispatch.c wants KSU_IOCTL_MANAGER.
+        def f_supercall(s):
+            if "KSU_IOCTL_MANAGER," in s:
+                return None
+            anchor = "DECLARE(__u32, KSU_IOCTL_LIST_TRY_UMOUNT,"
+            i = s.find(anchor)
+            if i < 0:
+                return None
+            line = "DECLARE(__u32, KSU_IOCTL_MANAGER, _IOWR('K', 106, struct ksu_manager_cmd));\n"
+            return s[:i] + line + s[i:]
+
+        # 3) pkg_observer.c passes the newer flag; this tree's API is
+        #    track_throne(bool prune_only) -> false == full rescan.
+        def f_pkgobs(s):
+            if "TRACK_THRONE_FORCE_SYNCHRONOUS" not in s:
+                return None
+            if "define TRACK_THRONE_FORCE_SYNCHRONOUS" in s:
+                return None
+            spdx = "// SPDX-License-Identifier: GPL-2.0\n"
+            if not s.startswith(spdx):
+                return None
+            return s.replace(
+                spdx,
+                spdx + "#define TRACK_THRONE_FORCE_SYNCHRONOUS false /* track_throne(bool prune_only): full rescan */\n",
+                1)
+
+        patch("manager/throne_tracker.c", f_throne)
+        patch("include/uapi/supercall.h", f_supercall)
+        patch("manager/pkg_observer.c", f_pkgobs)
         PY
-        grep -n "strncmp(np->package" "$F" || true
+        grep -n "KSU_IOCTL_MANAGER" "$K/include/uapi/supercall.h" || true
+        grep -n "TRACK_THRONE_FORCE_SYNCHRONOUS" "$K/manager/pkg_observer.c" || true
+        grep -n "strncmp(np->package" "$K/manager/throne_tracker.c" || true
 
     - name: Fix selinux_hide pointer-bool-conversion on 6.6+ (ALL branches)
       shell: bash
