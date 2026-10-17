@@ -263,9 +263,12 @@ jobs:
           # worth the root_matrix plumbing for 3 selinux_hide commits. Flip to
           # latest when BakaSU upstream restores the contract.
           PIN_BAKASU="9097b1a1c6c889756201bbc5713a84a9b23f7908"
-          # SukiSU-Ultra: builtin tip (2026-10-09, adds missing arch.h);
-          # defines fake_state itself, calls the susfs_def.h no_su API -> OK on tips.
-          PIN_SUKISU_ULTRA="0af2cf9cef7dc2239fa7ebb3f7898830a1087e26"
+          # SukiSU-Ultra: main branch (2026-10-15). `builtin` is a stripped
+          # lineage that still reports KERNEL_SU_UAPI_VERSION=2 and declares
+          # fake_state -> the v4.2.1 manager (UAPI 5) shows "update kernel",
+          # and it lacks the selinux_hide timing fix. `main` is UAPI 5, builds
+          # clean (no #992 breakage) and carries the side-channel fix.
+          PIN_SUKISU_ULTRA="2aed04fcfdff9ad53041ffd84a291573993fa538"
           declare -A PIN_SUSFS=(
             [susfs_commit_android12_5_10]="82f08351fadb8b19dd6591bd14634d02ad832145"
             [susfs_commit_android13_5_10]="14c45388ec8cb3ca72f2ac8bf83097b9285a8418"
@@ -345,7 +348,7 @@ jobs:
           if [ "$SCHED_SUSFS" = "true" ]; then
             KERNELSU_COMMIT="$(pick "$PIN_KERNELSU" https://github.com/tiann/KernelSU.git refs/heads/main)"
             BAKASU_COMMIT="$(pick "$PIN_BAKASU" https://github.com/Baka-SU/BakaSU.git refs/heads/main)"
-            SUKISU_ULTRA_COMMIT="$(pick "$PIN_SUKISU_ULTRA" https://github.com/SukiSU-Ultra/SukiSU-Ultra.git refs/heads/builtin)"
+            SUKISU_ULTRA_COMMIT="$(pick "$PIN_SUKISU_ULTRA" https://github.com/SukiSU-Ultra/SukiSU-Ultra.git refs/heads/main)"
           else
             KERNELSU_COMMIT="$(resolve_sha https://github.com/tiann/KernelSU.git refs/heads/main)"
             BAKASU_COMMIT="$(resolve_sha https://github.com/Baka-SU/BakaSU.git refs/heads/main)"
